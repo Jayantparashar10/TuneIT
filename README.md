@@ -48,7 +48,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Launch the application
-streamlit run app.py
+streamlit run finetune.py
 ```
 
 ## Requirements
@@ -104,14 +104,7 @@ Adjust key parameters:
 gemma-finetuning-ui/
 ├── app.py                # Main Streamlit application
 ├── requirements.txt      # Dependencies
-├── config/               # Configuration files
-├── modules/
-│   ├── data_handler.py   # Dataset loading and preprocessing
-│   ├── model_utils.py    # Model loading and fine-tuning utilities
-│   ├── training.py       # Training loop implementation
-│   └── visualization.py  # Training metrics visualization
-├── templates/            # Sample datasets and prompts
-└── docs/                 # Detailed documentation
+└── README.md                 # Detailed documentation
 ```
 
 ## Contributing
