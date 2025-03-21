@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 # Set page configuration
 def setup_page():
     st.set_page_config(
-        page_title="Gemma Fine-tuning UI",
+        page_title="TuneIT",
         page_icon="💎",
         layout="wide"
     )
-    st.title("Gemma Fine-tuning UI 💎")
+    st.title("TuneIT💎")
     st.markdown("""
     This application allows you to easily fine-tune Google's Gemma models on your own datasets.
     Simply upload your data, configure the training parameters, and start fine-tuning!
