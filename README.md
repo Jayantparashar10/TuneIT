@@ -37,8 +37,8 @@ TuneIT simplifies the process of adapting  models to specific domains and tasks.
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/gemma-finetuning-ui.git
-cd gemma-finetuning-ui
+https://github.com/Jayantparashar10/TuneIT.git
+cd TuneIT
 
 # Create and activate a virtual environment (recommended)
 python -m venv venv
@@ -48,7 +48,7 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Launch the application
-streamlit run finetune.py
+streamlit run main.py
 ```
 
 ## Requirements
