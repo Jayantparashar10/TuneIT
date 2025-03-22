@@ -101,8 +101,8 @@ Adjust key parameters:
 ## Project Structure
 
 ```
-gemma-finetuning-ui/
-├── app.py                # Main Streamlit application
+TuneIT/
+├── main.py                # Main Streamlit application
 ├── requirements.txt      # Dependencies
 └── README.md                 # Detailed documentation
 ```
@@ -130,6 +130,3 @@ This project is licensed under the Apache 2.0 License - see the LICENSE file for
 ## Contact
 
 For questions or support, please open an issue on GitHub or contact the project maintainers.
-
----
-Answer from Perplexity: pplx.ai/share
