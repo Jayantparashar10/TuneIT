@@ -21,6 +21,8 @@ import zipfile
 import tempfile
 import shutil
 import logging
+from huggingface_hub import login, HfFolder
+from pathlib import Path
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -160,30 +162,126 @@ def create_tokenized_dataset(dataset, tokenizer, max_length=512):
     
     return tokenized_dataset
 
+def setup_hf_auth():
+    """Setup Hugging Face authentication"""
+    # Check for existing token
+    token_path = Path.home() / '.huggingface' / 'token'
+    if token_path.exists():
+        return True
+    
+    # If no token exists, prompt user for token
+    st.warning("⚠️ Hugging Face authentication required for gated models")
+    token = st.text_input(
+        "Enter your Hugging Face token:",
+        type="password",
+        help="Get your token from https://huggingface.co/settings/tokens"
+    )
+    
+    if token:
+        try:
+            # Validate and save token
+            login(token)
+            # Save token to file
+            token_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(token_path, 'w') as f:
+                json.dump({"token": token}, f)
+            st.success("✅ Successfully authenticated with Hugging Face!")
+            return True
+        except Exception as e:
+            st.error(f"❌ Authentication failed: {str(e)}")
+            return False
+    return False
+
+# Add this function after the setup_hf_auth function
+def show_auth_popup():
+    """Show authentication popup for gated models"""
+    st.info("🔒 This model requires Hugging Face authentication")
+    
+    # Create columns for a cleaner layout
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        token = st.text_input(
+            "Enter your Hugging Face token",
+            type="password",
+            help="Get your token from https://huggingface.co/settings/tokens"
+        )
+    
+    with col2:
+        st.markdown("<br>", unsafe_allow_html=True)  # Add spacing
+        auth_button = st.button("Authenticate")
+    
+    if auth_button and token:
+        try:
+            login(token)
+            # Save token
+            token_path = Path.home() / '.huggingface' / 'token'
+            token_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(token_path, 'w') as f:
+                json.dump({"token": token}, f)
+            st.success("✅ Successfully authenticated!")
+            return True
+        except Exception as e:
+            st.error(f"❌ Authentication failed: {str(e)}")
+            return False
+    return None
+
 # Function to load model with download if not available
-def load_model_with_download(model_name, local_only=False):
-    """Load model and tokenizer from local cache or download if needed."""
+def load_model_with_download(model_name, local_only=False, custom_token=None):
+    """Load model and tokenizer with support for gated models."""
     try:
+        # Use custom token if provided, otherwise use the token from HfFolder
+        token = custom_token if custom_token else HfFolder.get_token()
+        
+        # Check if model might be gated
+        if not local_only and ('meta-llama' in model_name.lower() or 
+                             'llama' in model_name.lower() or 
+                             'mistral' in model_name.lower()):
+            # Ensure user is authenticated if no custom token
+            if not custom_token and not setup_hf_auth():
+                raise Exception("Authentication required for gated model access")
+        
         if local_only:
             # Only attempt to load from local cache
-            tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
-            model = AutoModelForCausalLM.from_pretrained(model_name, local_files_only=True)
+            tokenizer = AutoTokenizer.from_pretrained(
+                model_name, 
+                local_files_only=True,
+                token=token  # Use the token variable
+            )
+            model = AutoModelForCausalLM.from_pretrained(
+                model_name, 
+                local_files_only=True,
+                token=token  # Use the token variable
+            )
             return model, tokenizer, "Using locally cached model."
         else:
             try:
                 # Try local cache first
-                tokenizer = AutoTokenizer.from_pretrained(model_name, local_files_only=True)
-                model = AutoModelForCausalLM.from_pretrained(model_name, local_files_only=True)
+                tokenizer = AutoTokenizer.from_pretrained(
+                    model_name, 
+                    local_files_only=True,
+                    token=token
+                )
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_name, 
+                    local_files_only=True,
+                    token=token
+                )
                 return model, tokenizer, "Using locally cached model."
             except Exception as local_error:
                 # Download if not in cache
                 logger.info(f"Model not found in cache. Downloading {model_name} from Hugging Face Hub...")
-                tokenizer = AutoTokenizer.from_pretrained(model_name)
-                model = AutoModelForCausalLM.from_pretrained(model_name)
+                tokenizer = AutoTokenizer.from_pretrained(
+                    model_name,
+                    token=token
+                )
+                model = AutoModelForCausalLM.from_pretrained(
+                    model_name,
+                    token=token
+                )
                 return model, tokenizer, "Model downloaded from Hugging Face Hub."
     except Exception as e:
         raise Exception(f"Failed to load model {model_name}: {str(e)}")
-
 # Custom callback for real-time training monitoring
 class StreamlitCallback(TrainerCallback):
     def __init__(self, progress_bar, loss_chart, eval_chart):
@@ -360,7 +458,7 @@ def main():
     
     # Home page
     if page == "Home":
-        st.header("Welcome to the AI Model Fine-tuning Platform")
+        st.header("Welcome to the TuneIT Fine-tuning Platform")
         st.write("""
         This application allows you to fine-tune language models on your own datasets without writing code.
         
@@ -384,18 +482,6 @@ def main():
             "labels": [0, 1, 0]  # Optional
         }
         st.dataframe(pd.DataFrame(sample_data))
-        
-        # Display supported models
-        st.subheader("Supported Base Models")
-        supported_models = [
-            "gpt2", "gpt2-medium", "gpt2-large",
-            "EleutherAI/gpt-neo-125M", "EleutherAI/gpt-neo-1.3B",
-            "facebook/opt-125m", "facebook/opt-350m",
-            "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-        ]
-        for model in supported_models:
-            st.markdown(f"- `{model}`")
-    
     # Upload Dataset page
     elif page == "Upload Dataset":
         st.header("Upload and Preprocess Your Dataset")
@@ -512,7 +598,10 @@ def main():
                 "gpt2", "gpt2-medium", "gpt2-large",
                 "EleutherAI/gpt-neo-125M", "EleutherAI/gpt-neo-1.3B",
                 "facebook/opt-125m", "facebook/opt-350m",
-                "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+                "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+                "meta-llama/Llama-2-7b-hf",  # Add gated models
+                "mistralai/Mistral-7B-v0.1",
+                "meta-llama/Llama-2-13b-hf"
             ]
             
             model_name = st.selectbox(
@@ -521,11 +610,32 @@ def main():
                 index=0
             )
             
+            # Check if selected model is gated
+            is_gated_model = any(name in model_name.lower() for name in ['llama', 'mistral', 'gemma', 'gpt4'])
+            
+            if is_gated_model:
+                token_path = Path.home() / '.huggingface' / 'token'
+                if not token_path.exists():
+                    auth_status = show_auth_popup()
+                    if auth_status is None or auth_status is False:
+                        st.warning("⚠️ Please authenticate to use this model")
+                        st.stop()
+            
             # Add option for custom model path
             custom_model = st.checkbox("Use custom model path")
-            
+
             if custom_model:
                 model_name = st.text_input("Enter custom model path or Hugging Face model ID")
+            
+                use_custom_token = st.checkbox("Use custom token for gated models")
+               
+                if use_custom_token:
+                     custom_token = st.text_input("Enter your Hugging Face token", type="password")
+                else :
+                    custom_token = None
+ 
+
+            
             
             # Option for using only locally cached models
             use_local_only = st.checkbox("Use only locally cached models (no downloads)", value=False)
@@ -638,7 +748,9 @@ def main():
                 with st.spinner("Loading model and tokenizer..."):
                     try:
                         # Load model with download option
-                        model, tokenizer, message = load_model_with_download(model_name, local_only=use_local_only)
+                         # Load model with download option and custom token if provided
+                        custom_token_value = custom_token if custom_model and use_custom_token else None
+                        model, tokenizer, message = load_model_with_download(model_name, local_only=use_local_only, custom_token=custom_token_value)
                         st.success(message)
                         
                         # Add pad token if not present
@@ -722,7 +834,7 @@ def main():
                 st.write(f"Max steps: {args.max_steps}")
                 st.write(f"Epochs: {args.num_train_epochs}")
             
-            # Training button
+            # Training button and monitoring section
             train_button = st.button("Start Training")
             
             if train_button:
@@ -744,7 +856,6 @@ def main():
                     )
             
                     try:
-                        # Start real training
                         with st.spinner("Training in progress..."):
                             trainer = train_model(
                                 st.session_state.model,
@@ -754,13 +865,12 @@ def main():
                                 st.session_state.training_args,
                                 streamlit_callback
                             )
-                    
-                            # Save the trainer in session state
+                            
                             st.session_state.trainer = trainer
                             st.session_state.training_callback = streamlit_callback
-                
+                            
                         st.success("Training completed successfully!")
-                
+                        
                     except Exception as e:
                         st.error(f"Error during training: {str(e)}")
                         st.exception(e)
@@ -791,6 +901,19 @@ def main():
                             height=400
                         )
                         st.plotly_chart(fig)
+                        
+                        # Add numerical metrics for training loss
+                        st.subheader("Training Loss Metrics")
+                        latest_step, latest_loss = callback.training_loss[-1]
+                        min_loss = min(losses)
+                        min_loss_step = steps[losses.index(min_loss)]
+                        
+                        metrics_df = pd.DataFrame({
+                            "Metric": ["Latest Loss", "Minimum Loss"],
+                            "Value": [f"{latest_loss:.6f}", f"{min_loss:.6f}"],
+                            "Step": [latest_step, min_loss_step]
+                        })
+                        st.table(metrics_df)
                 
                 with col2:
                     # Plot evaluation results if available
@@ -810,7 +933,20 @@ def main():
                             height=400
                         )
                         st.plotly_chart(fig)
-    
+                        
+                        # Add numerical metrics for evaluation loss
+                        st.subheader("Evaluation Loss Metrics")
+                        latest_step, latest_loss = callback.eval_results[-1]
+                        min_loss = min(losses)
+                        min_loss_step = steps[losses.index(min_loss)]
+                        
+                        metrics_df = pd.DataFrame({
+                            "Metric": ["Latest Loss", "Minimum Loss"],
+                            "Value": [f"{latest_loss:.6f}", f"{min_loss:.6f}"],
+                            "Step": [latest_step, min_loss_step]
+                        })
+                        st.table(metrics_df)
+            
     # Export Model page
     elif page == "Export Model":
         st.header("Export Your Fine-tuned Model")
